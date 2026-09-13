@@ -1,10 +1,13 @@
-name: Build Android APK
+name: Build and Release APK
 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build-apk:
@@ -29,8 +32,15 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: manoto-vpn-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: v${{ github.run_number }}
+          name: Manoto VPN v${{ github.run_number }}
+          body: |
+            Automatic APK release.
+
+            Commit: ${{ github.sha }}
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+          generate_release_notes: true
