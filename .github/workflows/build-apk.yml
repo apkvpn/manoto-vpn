@@ -30,7 +30,7 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -42,5 +42,5 @@ jobs:
 
             Commit: ${{ github.sha }}
           files: |
-            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-*-release.apk
           generate_release_notes: true
