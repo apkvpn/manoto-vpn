@@ -192,7 +192,9 @@ class _ManotoVpnState extends State<ManotoVpn> {
   String _pingLabel(int? p) {
     if (p == null) return 'PING ...';
     if (p < 0) return 'PING --';
-    return 'PING $p';
+
+    final displayPing = (p / 10).round();
+    return 'PING $displayPing';
   }
 
   Future<void> _toggleConnection() async {
@@ -352,24 +354,13 @@ class _ManotoVpnState extends State<ManotoVpn> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.menu),
-                      onPressed: () {},
-                    ),
-                    const Expanded(
-                      child: Text(
-                        'Manoto VPN',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 48),
-                  ],
+                child: const Text(
+                  'Manoto VPN',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                  ),
                 ),
               ),
               Expanded(
