@@ -84,6 +84,7 @@ class _ManotoVpnState extends State<ManotoVpn> {
   Server? _selectedServer;
   bool _initialized = false;
   bool _busy = false;
+  bool _showAllServers = false;
 
   bool get _isConnected => (_status?.state ?? '').toUpperCase() == 'CONNECTED';
   bool get _isConnecting =>
@@ -183,15 +184,15 @@ class _ManotoVpnState extends State<ManotoVpn> {
   Color _pingColor(int? p) {
     if (p == null) return Colors.grey;
     if (p < 0) return Colors.red;
-    if (p <= 150) return Colors.green;
-    if (p <= 400) return Colors.orange;
-    return Colors.red;
+    if (p <= 280) return Colors.lightGreen.shade600;
+    if (p >= 300) return Colors.orange;
+    return Colors.orange.shade300;
   }
 
   String _pingLabel(int? p) {
-    if (p == null) return '...';
-    if (p < 0) return 'timeout';
-    return '$p ms';
+    if (p == null) return 'PING ...';
+    if (p < 0) return 'PING --';
+    return 'PING $p';
   }
 
   Future<void> _toggleConnection() async {
@@ -253,6 +254,23 @@ class _ManotoVpnState extends State<ManotoVpn> {
     }
   }
 
+  Future<void> _deleteCustomServer(Server server) async {
+    if (!server.custom) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('custom_servers') ?? [];
+
+    list.remove(server.uri);
+    await prefs.setStringList('custom_servers', list);
+
+    if (_selectedServer?.uri == server.uri) {
+      _selectedServer = null;
+    }
+
+    _showSnack('Config deleted');
+    await _loadServers();
+  }
+
   Future<void> _addFromClipboard() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text?.trim() ?? '';
@@ -307,13 +325,26 @@ class _ManotoVpnState extends State<ManotoVpn> {
   Widget build(BuildContext context) {
     final selectedServer = _selectedServer;
 
+    final rankedServers = [..._servers];
+    rankedServers.sort(
+      (a, b) => _rank(a.ping).compareTo(_rank(b.ping)),
+    );
+
+    final visibleServers = _showAllServers
+        ? rankedServers
+        : rankedServers.take(10).toList();
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFFD9E6FB), Color(0xFFEFE7F7), Color(0xFFF7F7FB)],
+            colors: [
+              Color(0xFFD9E6FB),
+              Color(0xFFEFE7F7),
+              Color(0xFFF7F7FB),
+            ],
           ),
         ),
         child: SafeArea(
@@ -331,7 +362,10 @@ class _ManotoVpnState extends State<ManotoVpn> {
                       child: Text(
                         'Manoto VPN',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 20,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 48),
@@ -349,23 +383,87 @@ class _ManotoVpnState extends State<ManotoVpn> {
                       onTap: _toggleConnection,
                     ),
                     const SizedBox(height: 20),
-                    ..._servers.map((s) => _ServerTile(
-                          server: s,
-                          selected: _selectedServer?.uri == s.uri,
-                          pingColor: _pingColor(s.ping),
-                          pingLabel: _pingLabel(s.ping),
-                          accent: _accentFor(s.name),
-                          onTap: () => setState(() => _selectedServer = s),
-                        )),
-                    const SizedBox(height: 20),
+
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Servers',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 17,
+                            ),
+                          ),
+                        ),
+                        if (rankedServers.isNotEmpty)
+                          Text(
+                            '${rankedServers.length} servers',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    ...visibleServers.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final server = entry.value;
+
+                      return _ServerTile(
+                        server: server,
+                        selected: _selectedServer?.uri == server.uri,
+                        pingColor: index < 5
+                            ? Colors.green
+                            : _pingColor(server.ping),
+                        pingLabel: _pingLabel(server.ping),
+                        accent: _accentFor(server.name),
+                        rank: index < 5 ? index + 1 : null,
+                        onTap: () =>
+                            setState(() => _selectedServer = server),
+                      );
+                    }),
+
+                    if (rankedServers.length > 10)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2, bottom: 6),
+                        child: Center(
+                          child: TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _showAllServers = !_showAllServers;
+                              });
+                            },
+                            icon: Icon(
+                              _showAllServers
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
+                            ),
+                            label: Text(
+                              _showAllServers
+                                  ? 'Show less'
+                                  : 'Show ${rankedServers.length - 10} more',
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    const SizedBox(height: 14),
+
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 4),
                       child: Text(
                         'Custom Configurations',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 10),
+
                     if (_customServers.isEmpty)
                       Container(
                         padding: const EdgeInsets.all(16),
@@ -379,15 +477,18 @@ class _ManotoVpnState extends State<ManotoVpn> {
                         ),
                       )
                     else
-                      ..._customServers.map((s) => _ServerTile(
-                            server: s,
-                            selected: _selectedServer?.uri == s.uri,
-                            pingColor: _pingColor(s.ping),
-                            pingLabel: _pingLabel(s.ping),
-                            accent: _accentFor(s.name),
-                            onTap: () =>
-                                setState(() => _selectedServer = s),
-                          )),
+                      ..._customServers.map(
+                        (server) => _ServerTile(
+                          server: server,
+                          selected: _selectedServer?.uri == server.uri,
+                          pingColor: _pingColor(server.ping),
+                          pingLabel: _pingLabel(server.ping),
+                          accent: _accentFor(server.name),
+                          onTap: () =>
+                              setState(() => _selectedServer = server),
+                          onDelete: () => _deleteCustomServer(server),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -509,14 +610,19 @@ class _ServerTile extends StatelessWidget {
   final Color pingColor;
   final String pingLabel;
   final Color accent;
+  final int? rank;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
+
   const _ServerTile({
     required this.server,
     required this.selected,
     required this.pingColor,
     required this.pingLabel,
     required this.accent,
+    this.rank,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -526,6 +632,12 @@ class _ServerTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: selected ? const Color(0xFFEFEBFF) : Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: rank != null
+            ? Border.all(
+                color: Colors.green.withValues(alpha: 0.25),
+                width: 1,
+              )
+            : null,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -539,28 +651,84 @@ class _ServerTile extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
-        leading: CircleAvatar(
-          radius: 18,
-          backgroundColor: accent.withValues(alpha: 0.15),
-          child: Icon(Icons.public, color: accent, size: 18),
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (rank != null)
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '$rank',
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: accent.withValues(alpha: 0.15),
+              child: Icon(Icons.public, color: accent, size: 18),
+            ),
+          ],
         ),
         title: Text(
           server.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+          ),
+        ),
+        subtitle: Text(
+          server.protocol,
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(pingLabel,
-                style: TextStyle(color: pingColor, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 8),
+            Text(
+              pingLabel,
+              style: TextStyle(
+                color: pingColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 7),
             Container(
               width: 9,
               height: 9,
-              decoration: BoxDecoration(color: pingColor, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: pingColor,
+                shape: BoxShape.circle,
+              ),
             ),
+            if (server.custom && onDelete != null) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                  size: 21,
+                ),
+                onPressed: onDelete,
+              ),
+            ],
           ],
         ),
       ),
